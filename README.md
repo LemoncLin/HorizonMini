@@ -1,95 +1,94 @@
 # HorizonMini
 
-每日自动抓取 [Horizon](https://github.com/Thysrael/Horizon) 每日科技摘要，并通过邮件推送，保留完整 HTML 格式。
+每日自动抓取 [Horizon](https://github.com/Thysrael/Horizon) 每日科技摘要（中文版），以 HTML 邮件形式推送。
 
 ## 功能
 
-- 定时任务：GitHub Actions 每天 7:00 (北京时间) 自动触发
-- 内容抓取：获取前一天的中文版摘要 `summary-zh.html`
-- 格式保留：邮件 HTML 格式与原网页风格一致
-- 本地测试：支持 `--dry-run` 模式保存 HTML 到本地预览
+- **定时推送** — GitHub Actions 每天 23:00 UTC（北京时间 07:00）自动触发
+- **内容清洗** — 提取 Horizon 摘要页主体，保留目录、转换折叠块、修复相对路径
+- **邮件兼容** — 内嵌 CSS，居中 680px 布局，适配主流邮件客户端
+- **本地预览** — `--dry-run` 模式生成 HTML 文件，浏览器直接查看
 
 ## 项目结构
 
 ```
 HorizonMini/
-├── .github/workflows/
-│   └── daily-email.yml       # GitHub Actions 工作流
+├── .github/workflows/daily-email.yml   # GitHub Actions 定时任务
+├── config/settings.json                # 非敏感配置（SMTP 地址、端口等）
 ├── scripts/
-│   └── send_email.py         # 主脚本
-├── .env.example              # 本地配置模板
+│   ├── send_email.py                   # 主脚本：抓取 → 清洗 → 构建 → 发送
+│   └── templates/
+│       ├── __init__.py                 # 模板加载器
+│       ├── email.html                  # 邮件 HTML 结构模板
+│       └── email.css                   # 邮件 CSS 样式
 ├── .gitignore
 ├── requirements.txt
 └── README.md
 ```
 
-## 配置
+## 快速开始
 
-### 1. 本地测试
+### 本地测试
 
 ```bash
 # 安装依赖
 pip install -r requirements.txt
 
-# 创建本地配置
-cp .env.example .env
-# 编辑 .env 填写 SMTP 凭据
-```
-
-**.env 文件内容：**
-```
-SMTP_HOST=smtp.163.com
-SMTP_PORT=465
-SMTP_USER=yourname@163.com
-SMTP_PASS=your-smtp-authorization-code
-TO_EMAIL=recipient@example.com
-```
-
-**163 邮箱获取授权码：** 设置 → POP3/SMTP/IMAP → 开启 SMTP → 新增授权码
-
-### 2. GitHub Actions (线上部署)
-
-推送代码到 GitHub 后，需要在仓库中添加 Secrets：
-
-**操作路径：** Repository → Settings → Secrets and variables → Actions → New repository secret
-
-| Secret 名称 | 说明 | 示例值 |
-|-------------|------|--------|
-| `SMTP_HOST` | SMTP 服务器地址 | `smtp.163.com` |
-| `SMTP_PORT` | SMTP 端口 | `465` |
-| `SMTP_USER` | 发件邮箱 | `yourname@163.com` |
-| `SMTP_PASS` | SMTP 授权码（非登录密码） | `xxxxxxxx` |
-| `FROM_EMAIL` | 发件人地址（可选，默认同 SMTP_USER） | `yourname@163.com` |
-| `FROM_NAME` | 发件人名称（可选） | `HorizonMini` |
-| `TO_EMAIL` | 收件邮箱 | `recipient@example.com` |
-
-## 使用
-
-### 本地测试
-
-```bash
-# 仅保存 HTML 到本地（不发送邮件）
-python scripts/send_email.py --dry-run
-
-# 指定日期测试
+# 仅生成 HTML 预览（不发送邮件）
 python scripts/send_email.py --dry-run --date 2026-07-02
 
-# 真正发送邮件
-python scripts/send_email.py
+# 浏览器打开 output-2026-07-02.html 查看效果
 ```
 
-浏览器打开 `output-YYYY-MM-DD.html` 可预览邮件效果。
+### 部署到 GitHub
 
-### 自动推送
+1. Fork 或克隆本仓库到你的 GitHub 账号
+2. 进入仓库 **Settings → Secrets and variables → Actions**，添加以下 3 个 Secret：
 
-代码推送到 GitHub 后，Actions 会自动在每天 23:00 UTC（北京时间 07:00）执行邮件推送。
+| Secret 名称 | 说明 | 示例 |
+|-------------|------|------|
+| `SMTP_USER` | 发件邮箱地址 | `yourname@163.com` |
+| `SMTP_PASS` | SMTP 授权码（非登录密码） | `xxxxxxxx` |
+| `TO_EMAIL` | 收件邮箱地址 | `recipient@example.com` |
 
-**手动触发：** Actions → 每日邮件推送 → Run workflow
+> **163 邮箱获取授权码：** 设置 → POP3/SMTP/IMAP → 开启 SMTP 服务 → 生成授权码
 
-## 技术说明
+3. 推送代码后，Actions 会自动在每天 07:00（北京时间）执行推送
 
-- 从 Horizon 页面提取 `<main>` 区域内容
-- 目录 `<ol>` 保留，便于快速浏览
-- `<details>` 折叠块转为始终可见内容（邮件客户端兼容）
-- 相对路径转绝对路径，确保链接可点击
-- 使用 `smtplib` + `requests` 标准实现，依赖极少
+### 自定义配置
+
+非敏感配置（SMTP 服务器地址、端口、发件人名称等）在 `config/settings.json` 中修改即可：
+
+```json
+{
+  "smtp": {
+    "host": "smtp.163.com",
+    "port": 465
+  },
+  "sender": {
+    "name": "HorizonMini"
+  }
+}
+```
+
+如需覆盖，可在 GitHub Actions Secrets 中设置同名环境变量（优先级：环境变量 > settings.json）。
+
+## 内容处理流程
+
+1. **抓取** — 请求 `https://thysrael.github.io/Horizon/{YYYY}/{MM}/{DD}/summary-zh.html`
+2. **提取** — 只取 `<main id="content">` 内部内容
+3. **清洗**：
+   - 移除首个 `<blockquote>` 统计区块（移至 header 展示）
+   - 移除空锚点 `<a id="item-N"></a>`
+   - 移除 GitHub Pages 底部 `<footer class="site-footer">`
+   - `<details><summary>` → `<div class="ref-links">`（邮件兼容）
+   - 相对路径 → 绝对路径
+4. **构建** — 注入 CSS + 清洗后的内容到邮件模板
+5. **发送** — `smtplib.SMTP_SSL` + `MIMEText(html)`
+
+## 技术栈
+
+- **Python** 3.11+，仅依赖 `requests` + `python-dotenv`
+- **GitHub Actions** 定时调度
+- **SMTP_SSL** 加密发送邮件
+- **正则表达式** 内容清洗，无 HTML 解析依赖

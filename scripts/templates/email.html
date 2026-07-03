@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+{{ css }}
+</style>
+</head>
+<body>
+  <div class="header">
+    <h1>Horizon 每日摘要</h1>
+    <div class="sub">{{ date_str }}</div>
+    <div class="stats">{{ stats_text }}</div>
+  </div>
+  {{ content }}
+  <div class="footer">
+    <p>由 HorizonMini &middot; 每日自动推送</p>
+    <p><a href="{{ archive_url }}">查看网页版</a></p>
+  </div>
+</body>
+</html>

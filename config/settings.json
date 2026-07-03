@@ -1,0 +1,10 @@
+{
+  "_comment": "非敏感配置 — 环境变量优先级高于此文件",
+  "smtp": {
+    "host": "smtp.163.com",
+    "port": 465
+  },
+  "sender": {
+    "name": "HorizonMini"
+  }
+}
