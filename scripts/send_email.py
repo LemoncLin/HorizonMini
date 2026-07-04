@@ -15,6 +15,7 @@ import argparse
 import json
 import os
 import re
+import time
 import smtplib
 import sys
 from datetime import datetime, timedelta, timezone
@@ -54,13 +55,57 @@ def parse_args() -> argparse.Namespace:
         default=None,
         help="指定日期 YYYY-MM-DD，默认取前一日",
     )
+    parser.add_argument(
+        "--auto-date",
+        action="store_true",
+        help="自动查找最新可用的 Horizon 摘要日期（重试模式，间隔3小时）",
+    )
     return parser.parse_args()
 
 
-def resolve_date(date_str: str | None) -> str:
-    if date_str:
-        return date_str
-    return (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+def find_latest_available_date() -> str | None:
+    """向前扫描最近 7 天，找到第一个可访问的日期
+
+    从昨天开始往前找，最多回退 7 天。
+    返回 YYYY-MM-DD 字符串，都不可达则返回 None。
+    """
+    today = datetime.now(timezone.utc)
+    for offset in range(1, 8):
+        date = (today - timedelta(days=offset)).strftime("%Y-%m-%d")
+        url = build_url(date)
+        try:
+            resp = requests.head(url, timeout=10)
+            if resp.status_code == 200:
+                print(f"[INFO] 找到可用日期: {date}")
+                return date
+        except requests.RequestException:
+            pass
+    return None
+
+
+def find_latest_available_date_with_retries(max_hours: int = 24) -> str:
+    """带重试机制查找最新可用日期，每隔 3 小时重试一次
+
+    首次立即尝试，之后每隔 3 小时重试，最多等待 max_hours 小时。
+    返回找到的日期字符串，超时后抛出异常。
+    """
+    today = datetime.now(timezone.utc)
+    deadline = today + timedelta(hours=max_hours)
+    retry_count = 0
+
+    while today <= deadline:
+        date_str = find_latest_available_date()
+        if date_str:
+            return date_str
+        retry_count += 1
+        wait_minutes = 3 * 60
+        print(f"[INFO] 暂无可用日期，{wait_minutes // 60} 小时后重试 ({retry_count}/{max_hours // 3})")
+        time.sleep(wait_minutes * 60)
+        today = datetime.now(timezone.utc)
+
+    raise TimeoutError(
+        f"在 {max_hours} 小时内未找到可用的 Horizon 摘要页面，已放弃"
+    )
 
 
 def build_url(date_str: str) -> str:
@@ -232,7 +277,17 @@ def send_email(html_body: str, date_str: str) -> bool:
 
 def main():
     args = parse_args()
-    date_str = resolve_date(args.date)
+
+    # 确定要抓取的日期
+    if args.date:
+        date_str = args.date
+    elif args.auto_date:
+        print("[INFO] 正在查找最新可用的 Horizon 摘要页面...")
+        date_str = find_latest_available_date_with_retries(max_hours=24)
+        print(f"[INFO] 找到可用日期: {date_str}")
+    else:
+        date_str = (datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%d")
+
     url = build_url(date_str)
     print(f"[INFO] 目标 URL: {url}")
 

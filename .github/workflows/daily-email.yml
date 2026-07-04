@@ -21,7 +21,7 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: 抓取并发送邮件
-        run: python scripts/send_email.py
+        run: python scripts/send_email.py --auto-date
         env:
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
