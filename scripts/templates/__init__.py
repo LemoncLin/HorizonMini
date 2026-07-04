@@ -1,6 +1,6 @@
 """邮件模板加载器 — 从外部文件读取 HTML 和 CSS"""
 
-import os
+import re
 from pathlib import Path
 
 
@@ -24,26 +24,25 @@ def load_html_template() -> str:
 def render_email(css: str, html_template: str, **kwargs: object) -> str:
     """将 CSS 注入 HTML 模板，再用 kwargs 填充占位符
 
+    模板使用 Jinja2 风格的 {{ var }} 占位符。
+    由于 CSS 中包含大量 { } 花括号，不能直接交给 .format() 解析。
     策略：
-    1. 用 %s 占位符先注入 CSS（避开 Python .format() 对 {} 的解析冲突）
-    2. 将剩余模板占位符 {{ }} 转义为 {{{{ }}}}，再格式化
+      1. 将 {{ css }} 替换为唯一标记（避开 CSS 花括号干扰）
+      2. 将 {{ var }} 转为 {var}（去除空格）供 .format() 使用
+      3. 填充变量
+      4. 将唯一标记还原为 CSS 原文
     """
-    # 第一步：把 {{ css }} 替换为 CSS 原文（用 %s 定位，避免 .format() 解析花括号）
-    placeholder = "{{ css }}"
-    if placeholder in html_template:
-        html = html_template.replace(placeholder, "%s")
-        html = html % css
-    else:
-        html = html_template
+    # 用唯一标记暂存 CSS 位置
+    CSS_MARKER = "\x00__CSS_CONTENT__\x00"
+    html = html_template.replace("{{ css }}", CSS_MARKER)
 
-    # 第二步：将模板中的单 { } 转义为 {{ }}，再执行 .format()
-    # 先临时替换 {{ }} 为唯一标记
-    ESC_A = "\x00ESCOPEN\x00"
-    ESC_B = "\x00ESCCLOSE\x00"
-    html = html.replace("{{", ESC_A).replace("}}", ESC_B)
-    # 剩下的单 { } 是模板变量占位符，转义为 {{ }}
-    html = html.replace("{", "{{").replace("}", "}}")
-    # 还原之前的转义标记
-    html = html.replace(ESC_A, "{{").replace(ESC_B, "}}")
+    # 将 {{ var }} 转为 {var}（去空格）
+    html = re.sub(r"\{\{\s*(\w+)\s*\}\}", r"{\1}", html)
 
-    return html.format(**kwargs)
+    # 填充模板变量
+    html = html.format(**kwargs)
+
+    # 将 CSS 标记替换为实际 CSS 内容
+    html = html.replace(CSS_MARKER, css)
+
+    return html
