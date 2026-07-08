@@ -263,13 +263,38 @@ def send_email(html_body: str, date_str: str) -> bool:
     msg["From"] = formataddr((from_name, from_email))
     msg["To"] = to_email
     msg["Subject"] = f"Horizon 每日摘要 — {date_str}"
+    # 标记为自动生成的批量邮件，降低被风控误判的概率
+    msg["Auto-Submitted"] = "auto-generated"
+    msg["Precedence"] = "bulk"
+    # 固定 Message-ID 前缀，便于服务端识别同一客户端
+    msg["Message-ID"] = f"<horizonmini-{date_str}@{smtp_host}>"
 
-    try:
-        with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=30) as server:
+    def _do_send(host: str, port: int) -> None:
+        """内部发送函数，固定 EHLO 主机名以减少 IP 变动特征"""
+        with smtplib.SMTP_SSL(
+            host, port,
+            timeout=30,
+            # 固定 EHLO/HELO 主机名，避免每次运行暴露不同的系统主机名
+            local_hostname="horizon-mini",
+        ) as server:
             server.login(smtp_user, smtp_pass)
             server.sendmail(from_email, [to_email], msg.as_string())
+
+    try:
+        _do_send(smtp_host, smtp_port)
         print(f"[OK] 邮件已发送至 {to_email}")
         return True
+    except smtplib.SMTPAuthenticationError as e:
+        # 认证失败（可能触发了异地登录检测）→ 等待 60s 重试一次
+        print(f"[WARN] SMTP 认证失败，60 秒后重试: {e}", file=sys.stderr)
+        time.sleep(60)
+        try:
+            _do_send(smtp_host, smtp_port)
+            print(f"[OK] 重试成功，邮件已发送至 {to_email}")
+            return True
+        except smtplib.SMTPException as e2:
+            print(f"[ERROR] 重试仍然失败: {e2}", file=sys.stderr)
+            return False
     except smtplib.SMTPException as e:
         print(f"[ERROR] 发送邮件失败: {e}", file=sys.stderr)
         return False
